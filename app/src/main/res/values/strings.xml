@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Activity Tracker</string>
+
+    <string name="error_ble_not_supported">Bluetooth LE not supported</string>
+    <string name="error_bluetooth_not_supported">Bluetooth not supported</string>
+
+    <string name="error_unknown_device">Unknown Device</string>
+    <string name="DeviceInformation">Device Information</string>
+    <string name="default_host">tracker.thyeway.xyz</string>
+    <string name="host_summary">IP or Hostname</string>
+    <string name="host_title">Host</string>
+
+</resources>
