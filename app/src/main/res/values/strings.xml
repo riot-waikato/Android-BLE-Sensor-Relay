@@ -9,5 +9,10 @@
     <string name="default_host">tracker.thyeway.xyz</string>
     <string name="host_summary">IP or Hostname</string>
     <string name="host_title">Host</string>
+    <string name="preference_host">host</string>
+    <string name="port_title">Port</string>
+    <string name="port_summary">Listening port</string>
+    <string name="preference_port">port</string>
+    <string name="default_port">65051</string>
 
 </resources>

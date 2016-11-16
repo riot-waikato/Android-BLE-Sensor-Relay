@@ -13,12 +13,14 @@ import android.bluetooth.BluetoothProfile;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.AsyncTask;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
+import android.preference.PreferenceManager;
 import android.support.v7.app.NotificationCompat;
 import android.util.Log;
 
@@ -73,8 +75,8 @@ public class SensorLoggingService extends Service {
     // how frequent to read data from sensor(s), in milliseconds
     private final int mDelay = 5000;
 
-    private final String HOST = "tracker.thyeway.xyz";      // TODO: automatically detect access point
-    private final int PORT = 65051;
+    private String HOST;      // TODO: automatically detect access point
+    private int PORT;
     private final int VERIFY_CONNECTION_INTERVAL = 1000;
     private static int ONGOING_NOTIFICATION_ID = 10;
 
@@ -146,6 +148,11 @@ public class SensorLoggingService extends Service {
      * @param devices list of device to be tracked
      */
     public void track(final ArrayList<BluetoothDevice> devices) {
+
+        // get the host and port to connect to from settings
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        HOST = preferences.getString(getResources().getString(R.string.preference_host), HOST);
+        PORT = Integer.parseInt(preferences.getString(getResources().getString(R.string.preference_port), ""));
 
         final Handler handler = new Handler();
         Runnable runnable = new Runnable() {

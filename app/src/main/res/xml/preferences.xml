@@ -3,8 +3,15 @@
 
     <EditTextPreference
         android:defaultValue="@string/default_host"
-        android:key="host"
+        android:key="@string/preference_host"
         android:summary="@string/host_summary"
         android:title="@string/host_title" />
+
+    <EditTextPreference
+        android:defaultValue="@string/default_port"
+        android:key="@string/preference_port"
+        android:summary="@string/port_summary"
+        android:title="@string/port_title"
+        android:inputType="numberDecimal" />
 
 </PreferenceScreen>
