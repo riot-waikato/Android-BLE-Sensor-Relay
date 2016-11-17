@@ -1,6 +1,8 @@
 package thyeway.xyz.activitytracker;
 
 import android.app.Notification;
+import android.app.PendingIntent;
+import android.app.RemoteInput;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -16,6 +18,9 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.net.wifi.ScanResult;
+import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.Binder;
 import android.os.Handler;
@@ -37,7 +42,7 @@ import static thyeway.xyz.activitytracker.DatabaseContract.DatabaseEntry;
 
 /**
  * Logging service
- *
+ * <p/>
  * Keep tracks of bluetooth device(s), relays sensor data to access points (Pi)
  * If the connection between the Pi and the phone goes down, store them in the
  * database locally, while waiting for the connection to be back up. As soon
@@ -85,6 +90,10 @@ public class SensorLoggingService extends Service {
         super.onCreate();
 
         mBinder = new LocalBinder();
+
+        // TODO: Stop tracking from notification
+        //Intent intent = new Intent(this, SensorLoggingService.class);
+        //PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, 0);
 
         // we want to make sure that the tracking goes on and does not get destroyed when:
         // 1: device (phone) is low on memory
@@ -145,48 +154,51 @@ public class SensorLoggingService extends Service {
 
     /**
      * Process a list of devices to be tracked
+     *
      * @param devices list of device to be tracked
      */
     public void track(final ArrayList<BluetoothDevice> devices) {
 
-        // get the host and port to connect to from settings
-        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
-        HOST = preferences.getString(getResources().getString(R.string.preference_host), HOST);
-        PORT = Integer.parseInt(preferences.getString(getResources().getString(R.string.preference_port), ""));
+        if(NetworkUtil.connectAccessPoint(this)) {
+            // get the host and port to connect to from settings
+            SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+            HOST = preferences.getString(getResources().getString(R.string.preference_host), HOST);
+            PORT = Integer.parseInt(preferences.getString(getResources().getString(R.string.preference_port), ""));
 
-        final Handler handler = new Handler();
-        Runnable runnable = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    mCharacteristicsQueue = new LinkedList<>();
-                    mDeviceQueue = new LinkedList<>();
+            final Handler handler = new Handler();
+            Runnable runnable = new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        mCharacteristicsQueue = new LinkedList<>();
+                        mDeviceQueue = new LinkedList<>();
 
-                    // add devices to queue
-                    for (BluetoothDevice device : devices) {
-                        mDeviceQueue.add(device.getAddress());
-                    }
-
-                    // connect to the devices in the queue and read data from the device
-                    if (mDeviceQueue.size() != 0) {
-                        final BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(mDeviceQueue.poll());
-                        if (device != null) {
-                            Log.i(TAG, "Processing: " + device.getAddress() + " " + device.getName());
-                            mCurrentTime = Long.toString(System.currentTimeMillis()/1000);
-                            mBluetoothGatt = device.connectGatt(getApplicationContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
+                        // add devices to queue
+                        for (BluetoothDevice device : devices) {
+                            mDeviceQueue.add(device.getAddress());
                         }
+
+                        // connect to the devices in the queue and read data from the device
+                        if (mDeviceQueue.size() != 0) {
+                            final BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(mDeviceQueue.poll());
+                            if (device != null) {
+                                Log.i(TAG, "Processing: " + device.getAddress() + " " + device.getName());
+                                mCurrentTime = Long.toString(System.currentTimeMillis() / 1000);
+                                mBluetoothGatt = device.connectGatt(getApplicationContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    } finally {
+                        handler.postDelayed(this, mDelay);
                     }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                } finally {
-                    handler.postDelayed(this, mDelay);
+
                 }
+            };
 
-            }
-        };
-
-        // run this repeatedly, at an interval
-        handler.postDelayed(runnable, mDelay);
+            // run this repeatedly, at an interval
+            handler.postDelayed(runnable, mDelay);
+        }
 
         // TODO: Feature/handler to stop tracking
     }
@@ -213,7 +225,7 @@ public class SensorLoggingService extends Service {
                     // process the next device
                     if (device != null) {
                         Log.i(TAG, "now processing: " + device.getAddress() + " " + device.getName());
-                        mCurrentTime = Long.toString(System.currentTimeMillis()/1000);
+                        mCurrentTime = Long.toString(System.currentTimeMillis() / 1000);
                         mCharacteristicsQueue = new LinkedList<>();
                         mBluetoothGatt = device.connectGatt(getApplicationContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
                     }
@@ -248,7 +260,7 @@ public class SensorLoggingService extends Service {
                     for (BluetoothGattCharacteristic c : characteristics) {
                         Log.i(TAG, "\t\tCHARACTERISTIC: " + c.getUuid());
 
-                        if(c.getProperties() == BluetoothGattCharacteristic.PROPERTY_READ) {
+                        if (c.getProperties() == BluetoothGattCharacteristic.PROPERTY_READ) {
                             mCharacteristicsQueue.add(c);
                         }
 
@@ -274,7 +286,7 @@ public class SensorLoggingService extends Service {
                 } else {
                     // no more characteristics to be read, send the last data off
                     byte[] bytes = new byte[mData.size()];
-                    for(int i = 0; i < mData.size(); i++) {
+                    for (int i = 0; i < mData.size(); i++) {
                         bytes[i] = mData.get(i);
                     }
                     packet p = new packet(1, bytes, mCurrentTime);
@@ -295,19 +307,20 @@ public class SensorLoggingService extends Service {
 
     /**
      * Reads a bluetooth GATT characteristic data, put it into a packet form and sends to an access point
+     *
      * @param characteristic GATT characteristic
      */
     public void readCharacteristic(BluetoothGattCharacteristic characteristic) {
         final byte[] data = characteristic.getValue();
 
-        if(mCurrentServiceUUID == null) {
+        if (mCurrentServiceUUID == null) {
             mCurrentServiceUUID = characteristic.getService().getUuid().toString();
         }
 
-        if(!characteristic.getService().getUuid().toString().equals(mCurrentServiceUUID)) {
+        if (!characteristic.getService().getUuid().toString().equals(mCurrentServiceUUID)) {
             // forms the packet
             byte[] bytes = new byte[mData.size()];
-            for(int i = 0; i < mData.size(); i++) {
+            for (int i = 0; i < mData.size(); i++) {
                 bytes[i] = mData.get(i);
             }
             packet p = new packet(1, bytes, mCurrentTime);
@@ -348,7 +361,7 @@ public class SensorLoggingService extends Service {
                 VerifyConnection verify = new VerifyConnection(new TaskCallback() {
                     @Override
                     public void taskStatus(boolean status) {
-                        if(status == false) {
+                        if (status == false) {
                             // connection is still down, try again within a specified interval
                             handler.postDelayed(verify_connection, VERIFY_CONNECTION_INTERVAL);
                         } else {
@@ -375,6 +388,7 @@ public class SensorLoggingService extends Service {
 
         /**
          * store the sensor data locally in the database
+         *
          * @param p packet to store in database
          */
         private void storeInDatabase(packet p) {
@@ -412,7 +426,7 @@ public class SensorLoggingService extends Service {
             try {
                 packet p = params[0];
 
-                if(inRange) {
+                if (inRange) {
                     // in range, send data to server
                     Socket socket = new Socket(HOST, PORT);
                     DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
@@ -421,7 +435,7 @@ public class SensorLoggingService extends Service {
                     builder.append("0 ");
                     builder.append("0x" + p.user_id);
                     builder.append(" ");
-                    for(byte b : p.data) {
+                    for (byte b : p.data) {
                         builder.append(b);
                         builder.append(" ");
                     }
@@ -436,7 +450,7 @@ public class SensorLoggingService extends Service {
                     // not in range, store to database
                     storeInDatabase(p);
                 }
-            } catch(UnknownHostException uhe) {
+            } catch (UnknownHostException uhe) {
                 // connection went down
                 inRange = false;
                 storeInDatabase(params[0]);
@@ -451,7 +465,7 @@ public class SensorLoggingService extends Service {
         protected void onPostExecute(Void aVoid) {
             // if there was a state change (connection went down),
             // start waiting for connection to restore
-            if(stateChange) {
+            if (stateChange) {
                 verify_connection();
             }
         }
@@ -521,7 +535,7 @@ public class SensorLoggingService extends Service {
                     builder.append(c.getString(1));
                     builder.append(" ");
 
-                    for(int i = 2; i < 11; i++) {
+                    for (int i = 2; i < 11; i++) {
                         builder.append(c.getString(i));
                         builder.append(" ");
                     }
