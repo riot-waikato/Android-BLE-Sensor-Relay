@@ -3,7 +3,11 @@ package thyeway.xyz.activitytracker;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothAdapter.LeScanCallback;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCallback;
+import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -26,6 +30,7 @@ import android.widget.ListView;
 import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * ScanDeviceActivity - main activity
@@ -178,14 +183,15 @@ public class ScanDeviceActivity extends AppCompatActivity {
     class BluetoothDevicesAdapter extends ArrayAdapter<BluetoothDevice> {
 
         // an array for available devices and selected devices
-        private ArrayList<BluetoothDevice> mLeDevices;
-        private ArrayList<BluetoothDevice> mLeDevicesSelected;
+        private ArrayList<Sensor> mLeDevices;       // TODO: RENAME
+        private ArrayList<Sensor> mLeDevicesSelected;
         private LayoutInflater mInflater;
+        private BluetoothGatt mBluetoothGatt;
 
         public BluetoothDevicesAdapter(Context context, int textViewResourceId) {
             super(context, textViewResourceId);
-            this.mLeDevices = new ArrayList<BluetoothDevice>();
-            this.mLeDevicesSelected = new ArrayList<BluetoothDevice>();
+            this.mLeDevices = new ArrayList<Sensor>();
+            this.mLeDevicesSelected = new ArrayList<Sensor>();
             this.mLeDevices.addAll(mLeDevices);
             mInflater = ScanDeviceActivity.this.getLayoutInflater();
         }
@@ -199,18 +205,63 @@ public class ScanDeviceActivity extends AppCompatActivity {
 
         @Override
         public void add(BluetoothDevice device) {
-            if (!mLeDevices.contains(device)) {
-                mLeDevices.add(device);
-                notifyDataSetChanged();
+            boolean exist = false;
+            for(Sensor sensor : mLeDevices) {
+                if(sensor.device_mac.equals(device.getAddress())) {
+                    exist = true;
+                    break;
+                }
+            }
+
+            if (!exist) {
+                mBluetoothGatt = device.connectGatt(getApplicationContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
             }
         }
+
+        private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
+            @Override
+            public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    mBluetoothGatt.discoverServices();
+                } else if(newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    mBluetoothGatt.close();
+                }
+            }
+
+            @Override
+            public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    List<BluetoothGattService> gattServices = mBluetoothGatt.getServices();
+
+                    // for each service, get all its characteristics and add it to the queue
+                    for (BluetoothGattService s : gattServices) {
+                        Log.i(TAG, "SERVICE: " + s.getUuid());
+                        SensorFactory sensorFactory = new SensorFactory();
+                        Sensor newSensor = sensorFactory.getSensor(s.getUuid().toString(), gatt.getDevice().getName(), gatt.getDevice().getAddress());
+                        if(newSensor != null) {
+                            Log.i(TAG, "Valid sensor: " + newSensor.getClass().toString());
+                            mLeDevices.add(newSensor);
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    notifyDataSetChanged();
+                                }
+                            });
+                            break;
+                        }
+                    }
+                    mBluetoothGatt.disconnect();
+                }
+
+            }
+        };
 
         @Override
         public int getCount() {
             return mLeDevices.size();
         }
 
-        public ArrayList<BluetoothDevice> getSelected() {
+        public ArrayList<Sensor> getSelected() {
             return mLeDevicesSelected;
         }
 
@@ -230,25 +281,25 @@ public class ScanDeviceActivity extends AppCompatActivity {
                 holder = (ViewHolder) convertView.getTag();
             }
 
-            final BluetoothDevice device = mLeDevices.get(position);
+            final Sensor sensor = mLeDevices.get(position);
 
             // set device name and MAC address
-            final String deviceName = device.getName();
+            final String deviceName = sensor.device_name;
             if (deviceName != null && deviceName.length() > 0) {
                 holder.deviceName.setText(deviceName);
             } else {
                 holder.deviceName.setText(R.string.error_unknown_device);
             }
-            holder.deviceAddress.setText(device.getAddress());
+            holder.deviceAddress.setText(sensor.device_mac);
 
             // add and remove from array when checkbox is checked or unchecked
             holder.selected.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View view) {
-                    if (mLeDevicesSelected.contains(device)) {
-                        mLeDevicesSelected.remove(device);
+                    if (mLeDevicesSelected.contains(sensor)) {
+                        mLeDevicesSelected.remove(sensor);
                     } else {
-                        mLeDevicesSelected.add(device);
+                        mLeDevicesSelected.add(sensor);
                     }
                 }
             });
@@ -259,7 +310,7 @@ public class ScanDeviceActivity extends AppCompatActivity {
                 @Override
                 public void onClick(View v) {
                     Intent intent = new Intent(getContext(), ViewDeviceActivity.class);
-                    intent.putExtra("address", device.getAddress());
+                    intent.putExtra("address", sensor.device_mac);
                     startActivity(intent);
                 }
             });

@@ -29,6 +29,13 @@ public class DatabaseContract {
         public static final String MOTION_MY = "my";
         public static final String MOTION_MZ = "mz";
         public static final String MOTION_ENTRY_REAL_DATE = "real_date";
+
+        /* LUX TABLE */
+        public static final String TABLE_LUX = "lux";
+        public static final String LUX_DEVICE_ID = "dev_id";
+        public static final String LUX_VALUE = "lux_value";
+        public static final String LUX_SEQ_NUMBER = "seq";
+        public static final String LUX_ENTRY_REAL_DATE = "real_date";
     }
 
 }

@@ -139,7 +139,9 @@ public class ViewDeviceActivity extends AppCompatActivity {
                 for (BluetoothGattService s : gattServices) {
                     List<BluetoothGattCharacteristic> characteristics = s.getCharacteristics();
                     for (BluetoothGattCharacteristic c : characteristics) {
-                        if (c.getProperties() == BluetoothGattCharacteristic.PROPERTY_READ) {
+                        // have to take into account multiple properties, e.g. READ + NOTIFY
+                        if (c.getProperties() == BluetoothGattCharacteristic.PROPERTY_READ ||
+                                c.getProperties() == (BluetoothGattCharacteristic.PROPERTY_READ + BluetoothGattCharacteristic.PROPERTY_NOTIFY)) {
                             mCharacteristicsQueue.add(c);
                         }
                     }

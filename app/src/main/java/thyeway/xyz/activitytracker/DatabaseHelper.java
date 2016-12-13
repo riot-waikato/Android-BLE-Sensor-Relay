@@ -41,6 +41,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                     DatabaseEntry.MOTION_MZ + REAL_TYPE + NOT_NULL + COMMA_SEP +
                     DatabaseEntry.MOTION_ENTRY_REAL_DATE + DATE_TYPE + NOT_NULL + ")";
 
+    // CREATE statement for Lux table
+//    private static final String SQL_CREATE_LUX_TABLE =
+//            CREATE_TABLE + DatabaseEntry
+
     // DROP statement for Motion table
     private static final String SQL_DELETE_MOTION = "DROP TABLE IF EXISTS " + DatabaseEntry.TABLE_MOTION;
 
