@@ -26,8 +26,10 @@ import android.util.Log;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -35,6 +37,7 @@ import java.util.Queue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.nio.ByteBuffer;
 
 import static thyeway.xyz.activitytracker.DatabaseContract.DatabaseEntry;
 
@@ -159,22 +162,25 @@ public class SensorLoggingService extends Service {
      */
     public void track(final ArrayList<Sensor> sensors) {
 
-//        if (NetworkUtil.connectAccessPoint(this)) {
-            // get the host and port to connect to from settings
-            SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
-            HOST = preferences.getString(getResources().getString(R.string.preference_host), HOST);
-            PORT = Integer.parseInt(preferences.getString(getResources().getString(R.string.preference_port), ""));
+        Log.i(TAG, "Checking if network is connected to a valid access point");
+        if (!NetworkUtil.isConnected(this)) {
+            Log.i(TAG, "Nope, Connecting...");
+            NetworkUtil.connectAccessPoint(this);
+        }
 
-            mSensors = new ArrayList<>(sensors);
+        // get the host and port to connect to from settings
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        HOST = preferences.getString(getResources().getString(R.string.preference_host), HOST);
+        PORT = Integer.parseInt(preferences.getString(getResources().getString(R.string.preference_port), ""));
 
-            for (Sensor sensor : mSensors) {
-                Log.i(TAG, "Tracking : " + sensor.device_mac);
-                final BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(sensor.device_mac);
+        mSensors = new ArrayList<>(sensors);
+
+        for (Sensor sensor : mSensors) {
+            Log.i(TAG, "Tracking : " + sensor.device_mac);
+            final BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(sensor.device_mac);
 //                mBluetoothGatt = device.connectGatt(getApplicationContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
-                device.connectGatt(getApplicationContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
-            }
-//        }
-        // mCurrentTime = Long.toString(System.currentTimeMillis() / 1000);
+            device.connectGatt(getApplicationContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
+        }
 
         // TODO: Feature/handler to stop tracking
     }
@@ -182,8 +188,8 @@ public class SensorLoggingService extends Service {
     private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
 
         private Sensor getSensor(String device_mac) {
-            for(Sensor sensor : mSensors) {
-                if(sensor.device_mac.equalsIgnoreCase(device_mac)) {
+            for (Sensor sensor : mSensors) {
+                if (sensor.device_mac.equalsIgnoreCase(device_mac)) {
                     return sensor;
                 }
             }
@@ -192,14 +198,41 @@ public class SensorLoggingService extends Service {
 
         @Override
         public void onConnectionStateChange(final BluetoothGatt gatt, int status, int newState) {
-            if(newState == BluetoothProfile.STATE_CONNECTED) {
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
                 gatt.discoverServices();
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                Log.i(TAG, "Disconnect: " + gatt.getDevice().getAddress());
+                gatt.close();
+            }
+        }
+
+        @Override
+        public void onServicesDiscovered(final BluetoothGatt gatt, int status) {
+            Log.i(TAG, "onServiceDiscovered");
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                Sensor sensor = getSensor(gatt.getDevice().getAddress());
+
+                List<BluetoothGattService> gattServices = gatt.getServices();
+                for (BluetoothGattService gattService : gattServices) {
+                    if (gattService.getUuid().toString().equalsIgnoreCase(UUIDs.LUX_SERVICE)) {
+
+                        List<BluetoothGattCharacteristic> characteristics = gattService.getCharacteristics();
+                        for (BluetoothGattCharacteristic characteristic : characteristics) {
+                            for (String UUID : sensor.gatt_characteristics) {
+                                if (characteristic.getUuid().toString().equalsIgnoreCase(UUID)) {
+                                    sensor.addToQueue(characteristic);
+                                    Log.i(TAG, "Add to queue: " + characteristic.getUuid().toString());
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Runnable discoverService = new Runnable() {
                     @Override
                     public void run() {
                         Sensor sensor = getSensor(gatt.getDevice().getAddress());
-                        if(sensor.readReady()) {
+                        if (sensor.readReady()) {
                             sensor.prepareReadQueue();
                             gatt.readCharacteristic(sensor.getQueueNext());
                         }
@@ -208,86 +241,29 @@ public class SensorLoggingService extends Service {
 
                 ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
                 executorService.scheduleAtFixedRate(discoverService, 0, 1, TimeUnit.SECONDS);
-            } else if(newState == BluetoothProfile.STATE_DISCONNECTED) {
-                Log.i(TAG, "Disconnect: " + gatt.getDevice().getAddress());
-                gatt.close();
-            }
-        }
-
-        @Override
-        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
-            Log.i(TAG, "onServiceDiscovered");
-            if(status == BluetoothGatt.GATT_SUCCESS) {
-                Sensor sensor = getSensor(gatt.getDevice().getAddress());
-
-                List<BluetoothGattService> gattServices = gatt.getServices();
-                for(BluetoothGattService gattService : gattServices) {
-                    if(gattService.getUuid().toString().equalsIgnoreCase(UUIDs.LUX_SERVICE)) {
-
-                        List<BluetoothGattCharacteristic> characteristics = gattService.getCharacteristics();
-                        for(BluetoothGattCharacteristic characteristic : characteristics) {
-                            for(String UUID : sensor.gatt_characteristics) {
-                                if(characteristic.getUuid().toString().equalsIgnoreCase(UUID)) {
-                                    sensor.addToQueue(characteristic);
-                                    Log.i(TAG, "Add to queue: " + characteristic.getUuid().toString());
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
 
         @Override
         public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
-            if(status == BluetoothGatt.GATT_SUCCESS) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
                 Sensor sensor = getSensor(gatt.getDevice().getAddress());
-                sensor.updateData(characteristic.getUuid().toString(), "0x" + Integer.toHexString(characteristic.getValue()[0] & 0xFF));
-//                Log.i(TAG, "0x" + Integer.toHexString(characteristic.getValue()[0] & 0xFF));
-//                short data = (short) (characteristic.getValue()[0] & 0xff);
-//                Log.i(TAG, characteristic.getUuid().toString() + " : " + String.valueOf(data));
+                sensor.updateData(characteristic.getUuid().toString(), characteristic.getValue());
+
                 BluetoothGattCharacteristic next = sensor.getQueueNext();
-                if(next != null) {
+                if (next != null) {
                     gatt.readCharacteristic(next);
                 } else {
-                    Log.i(TAG, sensor.device_mac + ": " + sensor.sequence_number + " | " + sensor.sensor_value );
+                    if (Integer.parseInt(sensor.sequence_number) >= 0) {
+                        new RelayData().execute(sensor.createPacket(Long.toString(System.currentTimeMillis() / 1000)));
+                    } else {
+                        Log.i(TAG, "Dropping packet");
+                    }
                     sensor.emptyData();
                 }
             }
         }
     };
-
-    /**
-     * Reads a bluetooth GATT characteristic data, put it into a packet form and sends to an access point
-     *
-     * @param characteristic GATT characteristic
-     */
-    public void readCharacteristic(BluetoothGattCharacteristic characteristic) {
-        final byte[] data = characteristic.getValue();
-
-        if (mCurrentServiceUUID == null) {
-            mCurrentServiceUUID = characteristic.getService().getUuid().toString();
-        }
-
-        if (!characteristic.getService().getUuid().toString().equals(mCurrentServiceUUID)) {
-            // forms the packet
-            byte[] bytes = new byte[mData.size()];
-            for (int i = 0; i < mData.size(); i++) {
-                bytes[i] = mData.get(i);
-            }
-
-            //############## CREATE PACKET HERE
-
-
-            // spawn process to send data off
-//            new RelayData().execute(p);
-
-            mData = new ArrayList<>();
-            mCurrentServiceUUID = characteristic.getService().getUuid().toString();
-        }
-
-        mData.add(data[0]);
-    }
 
     /**
      * Spawn a process to check if the connection has been restored
@@ -321,7 +297,7 @@ public class SensorLoggingService extends Service {
     /**
      * Process to relay data to an access point (Pi)
      */
-    private class RelayData extends AsyncTask<Sensor, Void, Void> {
+    private class RelayData extends AsyncTask<String, Void, Void> {
 
         // detect state change (connection dropped)
         private boolean stateChange = false;
@@ -329,17 +305,17 @@ public class SensorLoggingService extends Service {
         /**
          * store the sensor data locally in the database
          *
-         * @param sensor packet to store in database
+         * @param packet packet to store in database
          */
-        private void storeInDatabase(Sensor sensor) {
+        private void storeInDatabase(String packet) {
             try {
                 SQLiteDatabase db = dbHelper.getWritableDatabase();
                 ContentValues values = new ContentValues();
 
-                // ############## INSERT DATA INTO DATABASE HERE
+                Log.i(TAG, "INTO DATABASE: " + packet);
+                values.put(DatabaseEntry.PACKET_DATA, packet);
 
-//                db.insertWithOnConflict(DatabaseEntry.TABLE_MOTION, null, values, SQLiteDatabase.CONFLICT_IGNORE);
-
+                db.insertWithOnConflict(DatabaseEntry.TABLE_PACKETS, null, values, SQLiteDatabase.CONFLICT_IGNORE);
                 db.close();
             } catch (Exception e) {
                 e.printStackTrace();
@@ -347,32 +323,29 @@ public class SensorLoggingService extends Service {
         }
 
         @Override
-        protected Void doInBackground(Sensor... params) {
+        protected Void doInBackground(String... params) {
             try {
-                Sensor sensor = params[0];
+                String data = params[0];
 
                 if (inRange) {
                     // in range, send data to server
                     Socket socket = new Socket(HOST, PORT);
                     DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
 
-                    String packet = sensor.createPacket();
-
-                    Log.i(TAG, "SENDING DATA: " + packet);
-
-                    outputStream.writeBytes(packet);
+                    Log.i(TAG, "SENDING DATA: " + data);
+//
+                    outputStream.writeBytes(data);
                     socket.close();
                 } else {
                     // not in range, store to database
-                    storeInDatabase(sensor);
+                    storeInDatabase(data);
                 }
-            } catch (UnknownHostException uhe) {
+            } catch (Exception e) {
+                Log.i(TAG, "Connection is down");
                 // connection went down
                 inRange = false;
                 storeInDatabase(params[0]);
                 stateChange = true;
-            } catch (Exception e) {
-                e.printStackTrace();
             }
             return null;
         }
@@ -412,14 +385,17 @@ public class SensorLoggingService extends Service {
                 // sends callback notify that connection has been restored
                 listener.taskStatus(inRange);
 
-            } catch (UnknownHostException e) {
+            } catch (Exception e) {
                 // connection is still down
                 Log.i(TAG, "Connection is still down ... ");
                 inRange = false;
                 // sends callback to notify that connection is still down
                 listener.taskStatus(inRange);
-            } catch (IOException ioe) {
-                ioe.printStackTrace();
+
+                // recheck connection, do this here because it takes time for connection to be re-established
+                if(!NetworkUtil.isConnected(getApplicationContext())) {
+                    NetworkUtil.connectAccessPoint(getApplicationContext());
+                }
             }
             return null;
         }
@@ -433,8 +409,8 @@ public class SensorLoggingService extends Service {
         protected Void doInBackground(Void... params) {
 
             SQLiteDatabase db = dbHelper.getReadableDatabase();
-            // basically SELECT * FROM TABLE_MOTION
-            Cursor c = db.query(DatabaseEntry.TABLE_MOTION, null, null, null, null, null, null);
+            // basically SELECT * FROM TABLE_PACKETS
+            Cursor c = db.query(DatabaseEntry.TABLE_PACKETS, null, null, null, null, null, null);
 
             c.moveToFirst();
             try {
@@ -445,26 +421,14 @@ public class SensorLoggingService extends Service {
                     Socket socket = new Socket(HOST, PORT);
                     DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
 
-                    // construct into a 'packet'
-                    StringBuilder builder = new StringBuilder();
-                    builder.append("0 ");
-                    builder.append(c.getString(1));
-                    builder.append(" ");
+                    String data = c.getString(0);
+                    Log.i(TAG, "SENDING DATABASE DATA: " + data);
 
-                    for (int i = 2; i < 11; i++) {
-                        builder.append(c.getString(i));
-                        builder.append(" ");
-                    }
-
-                    builder.append(c.getString(11));
-                    builder.append("\n");
-
-                    Log.i(TAG, "SENDING DATABASE DATA: " + builder.toString());
-                    outputStream.writeBytes(builder.toString());
+                    outputStream.writeBytes(data);
                     socket.close();
 
                     // delete the entry from the database after sending
-                    db.delete(DatabaseEntry.TABLE_MOTION, DatabaseEntry.MOTION_ID + "=?", new String[]{Integer.toString(id)});
+                    db.delete(DatabaseEntry.TABLE_PACKETS, DatabaseEntry.PACKET_DATA + "=?", new String[]{Integer.toString(id)});
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -472,7 +436,7 @@ public class SensorLoggingService extends Service {
                 c.close();
             }
 
-            Log.i(TAG, "Sending completed");
+            Log.i(TAG, "Sent all packets");
 
             return null;
         }

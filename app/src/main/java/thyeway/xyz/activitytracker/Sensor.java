@@ -13,7 +13,6 @@ public abstract class Sensor {
     String device_id;
     String sensor_value;
     String sequence_number; // for debugging purpose only?
-    String last_read_time;  // time the data was read
     String service_uuid;
     ArrayList<String> gatt_characteristics;
 
@@ -26,7 +25,7 @@ public abstract class Sensor {
         this.device_mac = mac;
     }
 
-    public abstract void updateData(String UUID, String value);
+    public abstract void updateData(String UUID, byte[] value);
 
     public abstract void addToQueue(BluetoothGattCharacteristic characteristic);
 
@@ -38,6 +37,6 @@ public abstract class Sensor {
 
     public abstract void emptyData();
 
-    public abstract String createPacket();
+    public abstract String createPacket(String time);
 
 }

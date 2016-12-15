@@ -186,7 +186,6 @@ public class ScanDeviceActivity extends AppCompatActivity {
         private ArrayList<Sensor> mLeDevices;       // TODO: RENAME
         private ArrayList<Sensor> mLeDevicesSelected;
         private LayoutInflater mInflater;
-        private BluetoothGatt mBluetoothGatt;
 
         public BluetoothDevicesAdapter(Context context, int textViewResourceId) {
             super(context, textViewResourceId);
@@ -207,14 +206,14 @@ public class ScanDeviceActivity extends AppCompatActivity {
         public void add(BluetoothDevice device) {
             boolean exist = false;
             for(Sensor sensor : mLeDevices) {
-                if(sensor.device_mac.equals(device.getAddress())) {
+                if(sensor.device_mac.equalsIgnoreCase(device.getAddress())) {
                     exist = true;
                     break;
                 }
             }
 
             if (!exist) {
-                mBluetoothGatt = device.connectGatt(getApplicationContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
+                device.connectGatt(getApplicationContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
             }
         }
 
@@ -222,16 +221,16 @@ public class ScanDeviceActivity extends AppCompatActivity {
             @Override
             public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    mBluetoothGatt.discoverServices();
+                    gatt.discoverServices();
                 } else if(newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    mBluetoothGatt.close();
+                    gatt.close();
                 }
             }
 
             @Override
             public void onServicesDiscovered(BluetoothGatt gatt, int status) {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
-                    List<BluetoothGattService> gattServices = mBluetoothGatt.getServices();
+                    List<BluetoothGattService> gattServices = gatt.getServices();
 
                     // for each service, get all its characteristics and add it to the queue
                     for (BluetoothGattService s : gattServices) {
@@ -240,6 +239,11 @@ public class ScanDeviceActivity extends AppCompatActivity {
                         Sensor newSensor = sensorFactory.getSensor(s.getUuid().toString(), gatt.getDevice().getName(), gatt.getDevice().getAddress());
                         if(newSensor != null) {
                             Log.i(TAG, "Valid sensor: " + newSensor.getClass().toString());
+                            for(Sensor sensor : mLeDevices) {
+                                if(sensor.device_mac.equalsIgnoreCase(newSensor.device_mac)) {
+                                    return;
+                                }
+                            }
                             mLeDevices.add(newSensor);
                             runOnUiThread(new Runnable() {
                                 @Override
@@ -250,7 +254,7 @@ public class ScanDeviceActivity extends AppCompatActivity {
                             break;
                         }
                     }
-                    mBluetoothGatt.disconnect();
+                    gatt.disconnect();
                 }
 
             }

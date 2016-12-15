@@ -17,36 +17,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     // SQL CREATE statement syntax, for consistency
     private static final String CREATE_TABLE = "CREATE TABLE ";
     private static final String TEXT_TYPE = " TEXT";
-    private static final String REAL_TYPE = " REAL";
-    private static final String INT_TYPE = " INTEGER";
-    private static final String DATE_TYPE = " DATE";
     private static final String NOT_NULL = " NOT NULL";
-    private static final String PRIMARY_KEY = " PRIMARY KEY";
-    private static final String AUTO_INCREMENT = " AUTOINCREMENT";
-    private static final String COMMA_SEP = ",";
 
-    // CREATE statement for Motion table
-    private static final String SQL_CREATE_MOTION_TABLE =
-            CREATE_TABLE + DatabaseEntry.TABLE_MOTION + " (" +
-                    DatabaseEntry.MOTION_ID + INT_TYPE + PRIMARY_KEY + AUTO_INCREMENT + COMMA_SEP +
-                    DatabaseEntry.MOTION_DEVICE_ID + TEXT_TYPE + NOT_NULL + COMMA_SEP +
-                    DatabaseEntry.MOTION_GX + REAL_TYPE + NOT_NULL + COMMA_SEP +
-                    DatabaseEntry.MOTION_GY + REAL_TYPE + NOT_NULL + COMMA_SEP +
-                    DatabaseEntry.MOTION_GZ + REAL_TYPE + NOT_NULL + COMMA_SEP +
-                    DatabaseEntry.MOTION_AX + REAL_TYPE + NOT_NULL + COMMA_SEP +
-                    DatabaseEntry.MOTION_AY + REAL_TYPE + NOT_NULL + COMMA_SEP +
-                    DatabaseEntry.MOTION_AZ + REAL_TYPE + NOT_NULL + COMMA_SEP +
-                    DatabaseEntry.MOTION_MX + REAL_TYPE + NOT_NULL + COMMA_SEP +
-                    DatabaseEntry.MOTION_MY + REAL_TYPE + NOT_NULL + COMMA_SEP +
-                    DatabaseEntry.MOTION_MZ + REAL_TYPE + NOT_NULL + COMMA_SEP +
-                    DatabaseEntry.MOTION_ENTRY_REAL_DATE + DATE_TYPE + NOT_NULL + ")";
-
-    // CREATE statement for Lux table
-//    private static final String SQL_CREATE_LUX_TABLE =
-//            CREATE_TABLE + DatabaseEntry
+    // CREATE statement for Packets table
+    private static final String SQL_CREATE_PACKETS_TABLE =
+            CREATE_TABLE + DatabaseEntry.TABLE_PACKETS + " (" +
+                    DatabaseEntry.PACKET_DATA + TEXT_TYPE + NOT_NULL + ")";
 
     // DROP statement for Motion table
-    private static final String SQL_DELETE_MOTION = "DROP TABLE IF EXISTS " + DatabaseEntry.TABLE_MOTION;
+    private static final String SQL_DELETE_PACKETS = "DROP TABLE IF EXISTS " + DatabaseEntry.TABLE_PACKETS;
 
     /**
      * Constructor
@@ -59,13 +38,13 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     @Override
     public void onCreate(SQLiteDatabase db) {
-        System.out.println(SQL_CREATE_MOTION_TABLE);
-        db.execSQL(SQL_CREATE_MOTION_TABLE);
+        System.out.println(SQL_CREATE_PACKETS_TABLE);
+        db.execSQL(SQL_CREATE_PACKETS_TABLE);
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        db.execSQL(SQL_DELETE_MOTION);
+        db.execSQL(SQL_DELETE_PACKETS);
         onCreate(db);
     }
 

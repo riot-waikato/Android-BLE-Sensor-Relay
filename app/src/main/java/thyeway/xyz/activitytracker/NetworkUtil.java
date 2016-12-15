@@ -1,12 +1,19 @@
 package thyeway.xyz.activitytracker;
 
 import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.DhcpInfo;
+import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.text.format.Formatter;
 import android.util.Log;
 
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Utility class to handle connection with an access point (Pi)
@@ -24,6 +31,23 @@ public final class NetworkUtil {
      */
     private NetworkUtil() {
         throw new UnsupportedOperationException("Utility class should not be instantiated");
+    }
+
+    public static boolean isConnected(Context context) {
+        ConnectivityManager connManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo Wifi = connManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+
+        if(Wifi.isConnected()) {
+            WifiManager wifiManager = (WifiManager) context.getSystemService (Context.WIFI_SERVICE);
+            WifiInfo info = wifiManager.getConnectionInfo();
+            String SSID  = info.getSSID();
+            Pattern pattern = Pattern.compile(SSID_REGEX);
+            Matcher matcher = pattern.matcher(SSID);
+            if (matcher.find()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -76,12 +100,11 @@ public final class NetworkUtil {
         List<ScanResult> scanResults = null;
 
         // check if wifi is enabled
-        if(wifiManager.isWifiEnabled()) {
-            scanResults = wifiManager.getScanResults();
-        } else {
+        if(!wifiManager.isWifiEnabled()) {
             // turn wifi on
             wifiManager.setWifiEnabled(true);
         }
+        scanResults = wifiManager.getScanResults();
 
         for(ScanResult result : scanResults) {
             // SSID must follow the pre-defined prefix
@@ -97,7 +120,5 @@ public final class NetworkUtil {
 
         Log.i(TAG, "Best signal: " + bestNetworkSSID);
         return bestNetworkSSID;
-
     }
-
 }
