@@ -8,13 +8,16 @@ import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
@@ -168,12 +171,37 @@ public class ScanDeviceActivity extends AppCompatActivity {
         public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
             mSensorLoggingService = ((SensorLoggingService.LocalBinder) iBinder).getService();
             mBound = true;
+            LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(
+                    broadcastReceiver, new IntentFilter("service-status"));
         }
 
         @Override
         public void onServiceDisconnected(ComponentName componentName) {
             mSensorLoggingService = null;
             mBound = false;
+        }
+    };
+
+    private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            int type = intent.getIntExtra("status-type", 1);
+            String message = intent.getStringExtra("status-message");
+
+            TextView status = (TextView) findViewById(R.id.textViewStatus);
+
+            if(status.getVisibility() != View.VISIBLE) {
+                status.setVisibility(View.VISIBLE);
+            }
+
+            if(type == Status.STATUS_OK) {
+                status.setBackgroundColor(getResources().getColor(R.color.status_ok));
+            } else if(type == Status.STATUS_WARNING) {
+                status.setBackgroundColor(getResources().getColor(R.color.status_warning));
+            } else if(type == Status.STATUS_ERROR) {
+                status.setBackgroundColor(getResources().getColor(R.color.status_error));
+            }
+            status.setText(message);
         }
     };
 

@@ -6,4 +6,8 @@
 
     <color name="colorListSelector">#9E9E9E</color>
 
+    <color name="status_error">#E57373</color>
+    <color name="status_warning">#FFEB3B</color>
+    <color name="status_ok">#66BB6A</color>
+
 </resources>

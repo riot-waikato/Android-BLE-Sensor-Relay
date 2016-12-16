@@ -18,26 +18,21 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.AsyncTask;
 import android.os.Binder;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.NotificationCompat;
 import android.util.Log;
 
 import java.io.DataOutputStream;
-import java.io.IOException;
-import java.math.BigInteger;
 import java.net.Socket;
-import java.net.UnknownHostException;
-import java.nio.ByteOrder;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Queue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.nio.ByteBuffer;
 
 import static thyeway.xyz.activitytracker.DatabaseContract.DatabaseEntry;
 
@@ -57,21 +52,8 @@ public class SensorLoggingService extends Service {
 
     private BluetoothManager mBluetoothManager;
     private BluetoothAdapter mBluetoothAdapter;
-    private BluetoothGatt mBluetoothGatt;
-
-    // maintain a queue of GATT characteristics to be read
-    private Queue<BluetoothGattCharacteristic> mCharacteristicsQueue;
-    // maintain a queue of devices to be read
-//    private Queue<Sensor> mSensorQueue;
 
     private ArrayList<Sensor> mSensors;
-
-    // keep track of current service being processed
-    private String mCurrentServiceUUID;
-
-    // sensor data currenly being read
-    private ArrayList<Byte> mData;
-    private String mCurrentTime;
 
     private IBinder mBinder;
 
@@ -133,13 +115,6 @@ public class SensorLoggingService extends Service {
     }
 
     @Override
-    public void onDestroy() {
-        super.onDestroy();
-        mBluetoothGatt.disconnect();
-        mBluetoothGatt.close();
-    }
-
-    @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         return START_STICKY;
     }
@@ -155,6 +130,13 @@ public class SensorLoggingService extends Service {
         }
     }
 
+    private void setStatus(int status_type, String status_message) {
+        Intent intent = new Intent("service-status");
+        intent.putExtra("status-message", status_message);
+        intent.putExtra("status-type", status_type);
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+    }
+
     /**
      * Process a list of devices to be tracked
      *
@@ -165,7 +147,10 @@ public class SensorLoggingService extends Service {
         Log.i(TAG, "Checking if network is connected to a valid access point");
         if (!NetworkUtil.isConnected(this)) {
             Log.i(TAG, "Nope, Connecting...");
+            setStatus(Status.STATUS_WARNING, "Connecting to access point...");
             NetworkUtil.connectAccessPoint(this);
+        } else {
+            setStatus(Status.STATUS_WARNING, "Connected to access point");
         }
 
         // get the host and port to connect to from settings
@@ -199,6 +184,7 @@ public class SensorLoggingService extends Service {
         @Override
         public void onConnectionStateChange(final BluetoothGatt gatt, int status, int newState) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
+                setStatus(Status.STATUS_OK, gatt.getDevice().getAddress() + " connected");
                 gatt.discoverServices();
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.i(TAG, "Disconnect: " + gatt.getDevice().getAddress());
@@ -254,9 +240,10 @@ public class SensorLoggingService extends Service {
                 if (next != null) {
                     gatt.readCharacteristic(next);
                 } else {
-                    if (Integer.parseInt(sensor.sequence_number) >= 0) {
+                    if (Integer.parseInt(sensor.sequence_number) != 0) {
                         new RelayData().execute(sensor.createPacket(Long.toString(System.currentTimeMillis() / 1000)));
                     } else {
+                        setStatus(Status.STATUS_OK, "ESP8266 Thing working...");
                         Log.i(TAG, "Dropping packet");
                     }
                     sensor.emptyData();
@@ -333,12 +320,17 @@ public class SensorLoggingService extends Service {
                     DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
 
                     Log.i(TAG, "SENDING DATA: " + data);
+                    String message = "Sending data... \n" + data;
+                    setStatus(thyeway.xyz.activitytracker.Status.STATUS_OK, message.substring(0, message.length()-1));
 //
                     outputStream.writeBytes(data);
                     socket.close();
                 } else {
                     // not in range, store to database
                     storeInDatabase(data);
+                    String message = "Connection down, storing to database... \n" + data;
+                    setStatus(thyeway.xyz.activitytracker.Status.STATUS_WARNING, message.substring(0, message.length()-1));
+
                 }
             } catch (Exception e) {
                 Log.i(TAG, "Connection is down");
@@ -388,12 +380,14 @@ public class SensorLoggingService extends Service {
             } catch (Exception e) {
                 // connection is still down
                 Log.i(TAG, "Connection is still down ... ");
+
                 inRange = false;
                 // sends callback to notify that connection is still down
                 listener.taskStatus(inRange);
 
                 // recheck connection, do this here because it takes time for connection to be re-established
                 if(!NetworkUtil.isConnected(getApplicationContext())) {
+                    Log.i(TAG, "connection is down, trying to connect to access point");
                     NetworkUtil.connectAccessPoint(getApplicationContext());
                 }
             }
@@ -423,6 +417,8 @@ public class SensorLoggingService extends Service {
 
                     String data = c.getString(0);
                     Log.i(TAG, "SENDING DATABASE DATA: " + data);
+                    String message = "Sending database data... \n" + data;
+                    setStatus(thyeway.xyz.activitytracker.Status.STATUS_OK, message.substring(0, message.length()-1));
 
                     outputStream.writeBytes(data);
                     socket.close();

@@ -14,6 +14,19 @@
         app:theme="@style/ToolBarStyle"
         app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="?android:attr/textAppearanceSmall"
+        android:text="READY"
+        android:gravity="center"
+        android:layout_gravity="center"
+        android:background="@color/status_ok"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:visibility="gone"
+        android:id="@+id/textViewStatus" />
+
     <TextView android:layout_width="fill_parent"
         android:layout_height="wrap_content"
         android:padding="10dp"
