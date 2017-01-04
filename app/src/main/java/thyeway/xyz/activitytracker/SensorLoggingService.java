@@ -156,7 +156,7 @@ public class SensorLoggingService extends Service {
         // get the host and port to connect to from settings
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
         HOST = preferences.getString(getResources().getString(R.string.preference_host), HOST);
-        PORT = Integer.parseInt(preferences.getString(getResources().getString(R.string.preference_port), ""));
+        PORT = Integer.parseInt(preferences.getString(getResources().getString(R.string.preference_port), getResources().getString(R.string.default_port)));
 
         mSensors = new ArrayList<>(sensors);
 
