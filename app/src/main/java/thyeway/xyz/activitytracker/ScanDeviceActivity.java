@@ -31,6 +31,7 @@ import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +57,9 @@ public class ScanDeviceActivity extends AppCompatActivity {
     // how long to scan, in milliseconds
     private static final long SCAN_PERIOD = 1000000;
 
+    // result codes
+    private static final int REQUEST_ENABLE_BT = 1;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -71,16 +75,67 @@ public class ScanDeviceActivity extends AppCompatActivity {
         mHandler = new Handler();
 
         // get the default bluetooth adapter for this device
-        BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothManager bluetoothManager = (BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE);
         mBluetoothAdapter = bluetoothManager.getAdapter();
 
-        // initialize an adapter and link it to the listview to display list of bluetooth devices
-        mLeBluetoothDevicesAdapter = new BluetoothDevicesAdapter(this, R.layout.bluetooth_device_info);
-        ListView listView = (ListView) findViewById(R.id.listViewBLEDevices);
-        listView.setAdapter(mLeBluetoothDevicesAdapter);
+        // check that device supports Bluetooth
+        if (mBluetoothAdapter == null) {
 
-        // begin scanning devices
-        scanDevices();
+            Log.i(TAG, "No Bluetooth adapter could be found.");
+
+            // display error message as toast.
+            Context context = getApplicationContext();
+            CharSequence message = getResources().getString(R.string.bluetooth_unavailable_message);
+            int duration = Toast.LENGTH_SHORT;
+
+            Toast toast = Toast.makeText(context, message, duration);
+            toast.show();
+        }
+
+        // check that Bluetooth is enabled
+        if (!mBluetoothAdapter.isEnabled()) {
+
+            Log.i(TAG, "Bluetooth is disabled.");
+
+            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+        }
+
+        if (mBluetoothAdapter != null && mBluetoothAdapter.isEnabled()) {
+
+            // initialize an adapter and link it to the listview to display list of bluetooth devices
+            mLeBluetoothDevicesAdapter = new BluetoothDevicesAdapter(this, R.layout.bluetooth_device_info);
+            ListView listView = (ListView) findViewById(R.id.listViewBLEDevices);
+            listView.setAdapter(mLeBluetoothDevicesAdapter);
+
+            // begin scanning devices
+            scanDevices();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+
+        // result from a request to enable Bluetooth
+        if (requestCode == REQUEST_ENABLE_BT) {
+
+            if (resultCode == RESULT_OK) {
+
+                Log.i(TAG, "User enabled Bluetooth.");
+
+            } else {
+
+                Log.i(TAG, "User refused to enable Bluetooth.");
+
+                // Display error message as toast
+                Context context = getApplicationContext();
+                CharSequence message = getResources().getString(R.string.bluetooth_disabled_message);
+                int duration = Toast.LENGTH_SHORT;
+
+                Toast toast = Toast.makeText(context, message, duration);
+                toast.show();
+            }
+        }
     }
 
     @Override

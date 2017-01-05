@@ -15,4 +15,7 @@
     <string name="preference_port">port</string>
     <string name="default_port">65051</string>
 
+    <string name="bluetooth_disabled_message">Bluetooth is disabled. Some functions will not be available.</string>
+    <string name="bluetooth_unavailable_message">Bluetooth is not available on this device. Some functions will not be available.</string>
+
 </resources>

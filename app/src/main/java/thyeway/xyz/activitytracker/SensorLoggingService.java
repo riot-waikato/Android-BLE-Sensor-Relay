@@ -366,6 +366,7 @@ public class SensorLoggingService extends Service {
         @Override
         protected Void doInBackground(Void... params) {
             try {
+                Log.i(TAG, "Connecting to " + HOST + ":" + PORT);
                 // try connecting
                 Socket socket = new Socket(HOST, PORT);
 
