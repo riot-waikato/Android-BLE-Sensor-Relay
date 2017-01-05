@@ -8,6 +8,9 @@ import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
+import android.bluetooth.le.BluetoothLeScanner;
+import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanResult;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -175,30 +178,31 @@ public class ScanDeviceActivity extends AppCompatActivity {
      * only then we start scanning for bluetooth devices
      */
     private void scanDevices() {
+
+        BluetoothLeScanner scanner = mBluetoothAdapter.getBluetoothLeScanner();
         // stops scanning after a pre-defined scan period
         mHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                mBluetoothAdapter.stopLeScan(mLeScanCallBack);
+                mBluetoothAdapter.getBluetoothLeScanner().stopScan(mLeScanCallBack);
             }
         }, SCAN_PERIOD);
 
         // note: we can also scan for device that advertises certain services
         // we can do that using startLeScan(UUID[], callback);
-        mBluetoothAdapter.startLeScan(mLeScanCallBack);
+        mBluetoothAdapter.getBluetoothLeScanner().startScan(mLeScanCallBack);
     }
 
     /**
      * Callback interface used to deliver LE scan results
      * Populates the list when a bluetooth device is detected
      */
-    private LeScanCallback mLeScanCallBack = new LeScanCallback() {
-        @Override
-        public void onLeScan(final BluetoothDevice bluetoothDevice, int i, byte[] bytes) {
+    private ScanCallback mLeScanCallBack = new ScanCallback() {
+        public void onScanResult(int callbackType, final ScanResult result) {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    mLeBluetoothDevicesAdapter.add(bluetoothDevice);
+                    mLeBluetoothDevicesAdapter.add(result.getDevice());
                 }
             });
         }
@@ -212,7 +216,7 @@ public class ScanDeviceActivity extends AppCompatActivity {
      */
     public void track(View view) {
         // stop scanning first
-        mBluetoothAdapter.stopLeScan(mLeScanCallBack);
+        mBluetoothAdapter.getBluetoothLeScanner().stopScan(mLeScanCallBack);
 
         // pass the list of selected derive to the logging service to begin data logging
         mSensorLoggingService.track(mLeBluetoothDevicesAdapter.getSelected());
