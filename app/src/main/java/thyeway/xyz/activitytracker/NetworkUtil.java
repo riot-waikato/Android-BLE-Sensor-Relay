@@ -3,6 +3,7 @@ package thyeway.xyz.activitytracker;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.DhcpInfo;
+import android.net.Network;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
@@ -35,18 +36,30 @@ public final class NetworkUtil {
 
     public static boolean isConnected(Context context) {
         ConnectivityManager connManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-        NetworkInfo Wifi = connManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
 
-        if(Wifi.isConnected()) {
-            WifiManager wifiManager = (WifiManager) context.getSystemService (Context.WIFI_SERVICE);
-            WifiInfo info = wifiManager.getConnectionInfo();
-            String SSID  = info.getSSID();
-            Pattern pattern = Pattern.compile(SSID_REGEX);
-            Matcher matcher = pattern.matcher(SSID);
-            if (matcher.find()) {
-                return true;
+        // get a list of all networks
+        Network[] networks = connManager.getAllNetworks();
+
+        // check if a wifi connection to a suitable AP exists
+        NetworkInfo networkInfo;
+        for (Network mNetwork : networks) {
+            networkInfo = connManager.getNetworkInfo(mNetwork);
+
+            // is this a Wifi connection?
+            if (networkInfo.getState().equals(NetworkInfo.State.CONNECTED) && networkInfo.getType() == (ConnectivityManager.TYPE_WIFI)) {
+
+                // does it match the SSID pattern?
+                WifiManager wifiManager = (WifiManager) context.getSystemService (Context.WIFI_SERVICE);
+                WifiInfo info = wifiManager.getConnectionInfo();
+                String SSID  = info.getSSID();
+                Pattern pattern = Pattern.compile(SSID_REGEX);
+                Matcher matcher = pattern.matcher(SSID);
+                if (matcher.find()) {
+                    return true;
+                }
             }
         }
+
         return false;
     }
 
@@ -92,6 +105,7 @@ public final class NetworkUtil {
      */
     private static String scan(Context context) {
 
+        Log.i(TAG, "Beginning scan for Wifi access points.");
         WifiManager wifiManager = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
 
         int bestSignal = 0;
