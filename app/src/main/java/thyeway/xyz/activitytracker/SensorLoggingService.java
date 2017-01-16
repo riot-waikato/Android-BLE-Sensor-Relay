@@ -15,6 +15,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
+import android.database.sqlite.SQLiteCursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.AsyncTask;
 import android.os.Binder;
@@ -411,8 +412,6 @@ public class SensorLoggingService extends Service {
             try {
                 // for each entry, sends it off
                 while (c.moveToNext()) {
-                    int id = c.getInt(0);
-
                     Socket socket = new Socket(HOST, PORT);
                     DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
 
@@ -425,7 +424,9 @@ public class SensorLoggingService extends Service {
                     socket.close();
 
                     // delete the entry from the database after sending
-                    db.delete(DatabaseEntry.TABLE_PACKETS, DatabaseEntry.PACKET_DATA + "=?", new String[]{Integer.toString(id)});
+                    int numRows = db.delete(DatabaseEntry.TABLE_PACKETS, DatabaseEntry.PACKET_DATA + "=?", new String[]{data});
+                    Log.i(TAG, "Deleted " + numRows + " rows.");
+
                 }
             } catch (Exception e) {
                 e.printStackTrace();
