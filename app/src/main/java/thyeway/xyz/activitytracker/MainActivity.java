@@ -1,14 +1,12 @@
 package thyeway.xyz.activitytracker;
 
+import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothAdapter.LeScanCallback;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattService;
-import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
-import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanResult;
 import android.content.BroadcastReceiver;
@@ -17,9 +15,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
@@ -40,16 +41,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * ScanDeviceActivity - main activity
+ * MainActivity - main activity
  * Scans and displays a list of detected bluetooth le devices
  */
-public class ScanDeviceActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity {
 
     // debug use
-    private final String TAG = "ScanDeviceActivity";
+    private final String TAG = MainActivity.class.getSimpleName();
 
+    BluetoothConnectionManager mBluetooth;
+
+    // interface between UI and array of Bluetooth devices
     private BluetoothDevicesAdapter mLeBluetoothDevicesAdapter;
-    private BluetoothAdapter mBluetoothAdapter;
 
     private SensorLoggingService mSensorLoggingService;
 
@@ -61,7 +64,12 @@ public class ScanDeviceActivity extends AppCompatActivity {
     private static final long SCAN_PERIOD = 1000000;
 
     // result codes
-    private static final int REQUEST_ENABLE_BT = 1;
+    public static final int REQUEST_ENABLE_BT = 1;
+    public static final int REQUEST_COARSE_LOCATION = 2;
+
+    // scheduled jobs
+    BLEScanTask bleJob;
+    final int BLE_JOB_ID = 1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -72,19 +80,63 @@ public class ScanDeviceActivity extends AppCompatActivity {
         setSupportActionBar(toolbar);
 
         // TODO: Check for permissions (bluetooth and location)
-        // TODO: Check if bluetooth enabled
         // TODO: Check if bluetooth or location service is available
 
         mHandler = new Handler();
 
-        // get the default bluetooth adapter for this device
-        BluetoothManager bluetoothManager = (BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE);
-        mBluetoothAdapter = bluetoothManager.getAdapter();
+        checkLocationPermission();
 
-        // check that device supports Bluetooth
-        if (mBluetoothAdapter == null) {
+        initializeBluetooth();
 
-            Log.i(TAG, "No Bluetooth adapter could be found.");
+        if (mBluetooth.isSupported()) {
+
+            mBluetooth.updatePairedDevices();
+        }
+    }
+
+    protected void checkLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION},
+                    REQUEST_COARSE_LOCATION);
+        } else {
+            Log.d(TAG,"Have coarse location permission.");
+        }
+    }
+
+    /**
+     * 1. Initializes the Bluetooth adapter.
+     * 2. Checks that Bluetooth is supported on the device (error toast if not).
+     * 3. Checks Bluetooth is enabled (prompts to enable if not).
+     * 4. Registers BroadcastReceiver to listen for Bluetooth adapter state changes.
+     */
+    protected void initializeBluetooth() {
+
+        mBluetooth = new BluetoothConnectionManager(this);
+
+        // if adapter is null then Bluetooth is not supported on this device
+        if (mBluetooth.isSupported()) {
+
+            // check Bluetooth is enabled
+            Log.d(TAG, "Bluetooth is supported.");
+
+            if (mBluetooth.isEnabled()) {
+
+            } else {
+                Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+                startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+
+                // initialize an adapter for the list of Bluetooth devices
+                // this can be done even if Bluetooth is not yet enabled
+                mLeBluetoothDevicesAdapter = new BluetoothDevicesAdapter(this, R.layout.bluetooth_device_info);
+                ListView listView = (ListView) findViewById(R.id.listViewBLEDevices);
+                listView.setAdapter(mLeBluetoothDevicesAdapter);
+            }
+
+        } else {
+
+            // device does not support Bluetooth
+            Log.e(TAG, "Bluetooth is not supported on this device..");
 
             // display error message as toast.
             Context context = getApplicationContext();
@@ -94,32 +146,27 @@ public class ScanDeviceActivity extends AppCompatActivity {
             Toast toast = Toast.makeText(context, message, duration);
             toast.show();
         }
+    }
 
-        // check that Bluetooth is enabled
-        if (!mBluetoothAdapter.isEnabled()) {
-
-            Log.i(TAG, "Bluetooth is disabled.");
-
-            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
-        }
-
-        if (mBluetoothAdapter != null && mBluetoothAdapter.isEnabled()) {
-
-            // initialize an adapter and link it to the listview to display list of bluetooth devices
-            mLeBluetoothDevicesAdapter = new BluetoothDevicesAdapter(this, R.layout.bluetooth_device_info);
-            ListView listView = (ListView) findViewById(R.id.listViewBLEDevices);
-            listView.setAdapter(mLeBluetoothDevicesAdapter);
-
-            // begin scanning devices
-            scanDevices();
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           String permissions[], int[] grantResults) {
+        switch (requestCode) {
+            case REQUEST_COARSE_LOCATION: {
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    Log.i(TAG, "Coarse location permission granted.");
+                } else {
+                    Log.i(TAG, "Coarse location permission refused.");
+                }
+            }
         }
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 
-        // result from a request to enable Bluetooth
+        // request to enable bluetooth
         if (requestCode == REQUEST_ENABLE_BT) {
 
             if (resultCode == RESULT_OK) {
@@ -128,7 +175,7 @@ public class ScanDeviceActivity extends AppCompatActivity {
 
             } else {
 
-                Log.i(TAG, "User refused to enable Bluetooth.");
+                Log.e(TAG, "User refused to enable Bluetooth.");
 
                 // Display error message as toast
                 Context context = getApplicationContext();
@@ -149,10 +196,19 @@ public class ScanDeviceActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onStop() {
+        super.onStop();
+
+        mBluetooth.close(this);
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
         unbindService(mServiceConnection);
         mSensorLoggingService = null;
+
+
     }
 
     @Override
@@ -170,27 +226,6 @@ public class ScanDeviceActivity extends AppCompatActivity {
                 break;
         }
         return super.onOptionsItemSelected(item);
-    }
-
-    /**
-     * Scan for bluetooth devices
-     * first create a runnable to stop the scan after the pre-defined SCAN_PERIOD,
-     * only then we start scanning for bluetooth devices
-     */
-    private void scanDevices() {
-
-        BluetoothLeScanner scanner = mBluetoothAdapter.getBluetoothLeScanner();
-        // stops scanning after a pre-defined scan period
-        mHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                mBluetoothAdapter.getBluetoothLeScanner().stopScan(mLeScanCallBack);
-            }
-        }, SCAN_PERIOD);
-
-        // note: we can also scan for device that advertises certain services
-        // we can do that using startLeScan(UUID[], callback);
-        mBluetoothAdapter.getBluetoothLeScanner().startScan(mLeScanCallBack);
     }
 
     /**
@@ -213,7 +248,7 @@ public class ScanDeviceActivity extends AppCompatActivity {
      * gets the selected devices and launches a service to track these devices in background
      *
      * @param view
-     */
+
     public void track(View view) {
         // stop scanning first
         mBluetoothAdapter.getBluetoothLeScanner().stopScan(mLeScanCallBack);
@@ -279,7 +314,7 @@ public class ScanDeviceActivity extends AppCompatActivity {
             this.mLeDevices = new ArrayList<Sensor>();
             this.mLeDevicesSelected = new ArrayList<Sensor>();
             this.mLeDevices.addAll(mLeDevices);
-            mInflater = ScanDeviceActivity.this.getLayoutInflater();
+            mInflater = MainActivity.this.getLayoutInflater();
         }
 
         private class ViewHolder {
@@ -289,7 +324,7 @@ public class ScanDeviceActivity extends AppCompatActivity {
             ImageButton deviceInfo;
         }
 
-        @Override
+        /*@Override
         public void add(BluetoothDevice device) {
             boolean exist = false;
             for(Sensor sensor : mLeDevices) {
@@ -302,7 +337,7 @@ public class ScanDeviceActivity extends AppCompatActivity {
             if (!exist) {
                 device.connectGatt(getApplicationContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
             }
-        }
+        }*/
 
         private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
             @Override
@@ -409,5 +444,4 @@ public class ScanDeviceActivity extends AppCompatActivity {
             return convertView;
         }
     }
-
 }

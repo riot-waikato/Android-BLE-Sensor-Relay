@@ -99,7 +99,7 @@ public class SensorLoggingService extends Service {
         if (mBluetoothManager == null) {
             mBluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
             if (mBluetoothManager == null) {
-                Log.e(TAG, "Unable to initialize BluetoothManager.");
+                Log.e(TAG, "Unable to initialize BluetoothConnectionManager.");
                 this.stopSelf();
             }
         }
