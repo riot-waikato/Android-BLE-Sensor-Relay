@@ -52,7 +52,7 @@ public class MainActivity extends AppCompatActivity {
     BluetoothConnectionManager mBluetooth;
 
     // interface between UI and array of Bluetooth devices
-    private BluetoothDevicesAdapter mLeBluetoothDevicesAdapter;
+    private BluetoothDeviceArrayAdapter mLeBluetoothDeviceArrayAdapter;
 
     private SensorLoggingService mSensorLoggingService;
 
@@ -84,6 +84,7 @@ public class MainActivity extends AppCompatActivity {
 
         mHandler = new Handler();
 
+        mLeBluetoothDeviceArrayAdapter = new BluetoothDeviceArrayAdapter(this, R.id.listViewBLEDevices);
         checkLocationPermission();
 
         initializeBluetooth();
@@ -112,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
      */
     protected void initializeBluetooth() {
 
-        mBluetooth = new BluetoothConnectionManager(this);
+        mBluetooth = new BluetoothConnectionManager(this, mLeBluetoothDeviceArrayAdapter);
 
         // if adapter is null then Bluetooth is not supported on this device
         if (mBluetooth.isSupported()) {
@@ -128,9 +129,9 @@ public class MainActivity extends AppCompatActivity {
 
                 // initialize an adapter for the list of Bluetooth devices
                 // this can be done even if Bluetooth is not yet enabled
-                mLeBluetoothDevicesAdapter = new BluetoothDevicesAdapter(this, R.layout.bluetooth_device_info);
+                mLeBluetoothDeviceArrayAdapter = new BluetoothDeviceArrayAdapter(this, R.layout.bluetooth_device_info);
                 ListView listView = (ListView) findViewById(R.id.listViewBLEDevices);
-                listView.setAdapter(mLeBluetoothDevicesAdapter);
+                listView.setAdapter(mLeBluetoothDeviceArrayAdapter);
             }
 
         } else {
@@ -198,8 +199,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-
-        mBluetooth.close(this);
     }
 
     @Override
@@ -208,7 +207,7 @@ public class MainActivity extends AppCompatActivity {
         unbindService(mServiceConnection);
         mSensorLoggingService = null;
 
-
+        mBluetooth.close(this);
     }
 
     @Override
@@ -237,7 +236,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    mLeBluetoothDevicesAdapter.add(result.getDevice());
+                    mLeBluetoothDeviceArrayAdapter.add(result.getDevice());
                 }
             });
         }
@@ -248,13 +247,23 @@ public class MainActivity extends AppCompatActivity {
      * gets the selected devices and launches a service to track these devices in background
      *
      * @param view
+     */
 
     public void track(View view) {
         // stop scanning first
-        mBluetoothAdapter.getBluetoothLeScanner().stopScan(mLeScanCallBack);
+        mBluetooth.scanLeDevice(false);
 
         // pass the list of selected derive to the logging service to begin data logging
-        mSensorLoggingService.track(mLeBluetoothDevicesAdapter.getSelected());
+        mSensorLoggingService.track(mLeBluetoothDeviceArrayAdapter.getSelected());
+    }
+
+    /**
+     * On-click event for the SCAN button.
+     * Begins a BLE scan for devices.
+     * @param view
+     */
+    public void onClickScanButton(View view) {
+        mBluetooth.scanLeDevice(true);
     }
 
     /**
@@ -299,149 +308,5 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-    /**
-     * Custom adapter class to display list of available bluetooth le devices
-     */
-    class BluetoothDevicesAdapter extends ArrayAdapter<BluetoothDevice> {
 
-        // an array for available devices and selected devices
-        private ArrayList<Sensor> mLeDevices;       // TODO: RENAME
-        private ArrayList<Sensor> mLeDevicesSelected;
-        private LayoutInflater mInflater;
-
-        public BluetoothDevicesAdapter(Context context, int textViewResourceId) {
-            super(context, textViewResourceId);
-            this.mLeDevices = new ArrayList<Sensor>();
-            this.mLeDevicesSelected = new ArrayList<Sensor>();
-            this.mLeDevices.addAll(mLeDevices);
-            mInflater = MainActivity.this.getLayoutInflater();
-        }
-
-        private class ViewHolder {
-            TextView deviceName;
-            TextView deviceAddress;
-            CheckBox selected;
-            ImageButton deviceInfo;
-        }
-
-        /*@Override
-        public void add(BluetoothDevice device) {
-            boolean exist = false;
-            for(Sensor sensor : mLeDevices) {
-                if(sensor.device_mac.equalsIgnoreCase(device.getAddress())) {
-                    exist = true;
-                    break;
-                }
-            }
-
-            if (!exist) {
-                device.connectGatt(getApplicationContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
-            }
-        }*/
-
-        private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
-            @Override
-            public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
-                if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    gatt.discoverServices();
-                } else if(newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    gatt.close();
-                }
-            }
-
-            @Override
-            public void onServicesDiscovered(BluetoothGatt gatt, int status) {
-                if (status == BluetoothGatt.GATT_SUCCESS) {
-                    List<BluetoothGattService> gattServices = gatt.getServices();
-
-                    // for each service, get all its characteristics and add it to the queue
-                    for (BluetoothGattService s : gattServices) {
-                        Log.i(TAG, "SERVICE: " + s.getUuid());
-                        SensorFactory sensorFactory = new SensorFactory();
-                        Sensor newSensor = sensorFactory.getSensor(s.getUuid().toString(), gatt.getDevice().getName(), gatt.getDevice().getAddress());
-                        if(newSensor != null) {
-                            Log.i(TAG, "Valid sensor: " + newSensor.getClass().toString());
-                            for(Sensor sensor : mLeDevices) {
-                                if(sensor.device_mac.equalsIgnoreCase(newSensor.device_mac)) {
-                                    return;
-                                }
-                            }
-                            mLeDevices.add(newSensor);
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    notifyDataSetChanged();
-                                }
-                            });
-                            break;
-                        }
-                    }
-                    gatt.disconnect();
-                }
-
-            }
-        };
-
-        @Override
-        public int getCount() {
-            return mLeDevices.size();
-        }
-
-        public ArrayList<Sensor> getSelected() {
-            return mLeDevicesSelected;
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            final ViewHolder holder;
-
-            if (convertView == null) {
-                convertView = mInflater.inflate(R.layout.bluetooth_device_info, null);
-                holder = new ViewHolder();
-                holder.deviceAddress = (TextView) convertView.findViewById(R.id.textViewDeviceMACAddress);
-                holder.deviceName = (TextView) convertView.findViewById(R.id.textViewDeviceName);
-                holder.selected = (CheckBox) convertView.findViewById(R.id.checkBoxSelectDevice);
-                holder.deviceInfo = (ImageButton) convertView.findViewById(R.id.imageButtonDeviceInfo);
-                convertView.setTag(holder);
-            } else {
-                holder = (ViewHolder) convertView.getTag();
-            }
-
-            final Sensor sensor = mLeDevices.get(position);
-
-            // set device name and MAC address
-            final String deviceName = sensor.device_name;
-            if (deviceName != null && deviceName.length() > 0) {
-                holder.deviceName.setText(deviceName);
-            } else {
-                holder.deviceName.setText(R.string.error_unknown_device);
-            }
-            holder.deviceAddress.setText(sensor.device_mac);
-
-            // add and remove from array when checkbox is checked or unchecked
-            holder.selected.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                    if (mLeDevicesSelected.contains(sensor)) {
-                        mLeDevicesSelected.remove(sensor);
-                    } else {
-                        mLeDevicesSelected.add(sensor);
-                    }
-                }
-            });
-
-            // starts the ViewDevice activity
-            // pass the MAC address of the device to the activity
-            holder.deviceInfo.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    Intent intent = new Intent(getContext(), ViewDeviceActivity.class);
-                    intent.putExtra("address", sensor.device_mac);
-                    startActivity(intent);
-                }
-            });
-
-            return convertView;
-        }
-    }
 }

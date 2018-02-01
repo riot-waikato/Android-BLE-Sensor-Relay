@@ -1,21 +1,15 @@
 package thyeway.xyz.activitytracker;
 
 import android.app.job.JobInfo;
-import android.app.job.JobParameters;
-import android.app.job.JobService;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanResult;
-import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
-import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Handler;
 import android.util.Log;
-
-import java.net.URL;
 
 /**
  * BLEScanTask is responsible for managing connections with and transferring data from paired
@@ -31,7 +25,7 @@ public class BLEScanTask extends AsyncTask<Void, Void, Void> {
     private final int JOB_PERIOD_MS = 1000;
     private final int SCAN_PERIOD_MS = 1000;
 
-    private MainActivity.BluetoothDevicesAdapter mLeBluetoothDevicesAdapter;
+    private BluetoothDeviceArrayAdapter mLeBluetoothDevicesArrayAdapter;
     private BluetoothAdapter mBluetoothAdapter;
 
     protected JobInfo jobInfo;
